@@ -5,7 +5,6 @@ import sys
 
 from . import __version__
 from .bisect import BisectRunner
-from .templates import generate_template, list_templates
 
 
 def create_parser() -> argparse.ArgumentParser:
@@ -26,12 +25,6 @@ Examples:
   # With worktree isolation and state saving
   git-bisect-tool --good v1.0.0 --bad HEAD --test ./test.sh --worktree --state-file bisect.json
 
-  # Generate a test script template
-  git-bisect-tool --generate-template ./my_test.sh
-
-  # Generate LLVM-specific template
-  git-bisect-tool --generate-template ./my_test.sh --template-type llvm
-
   # Show what would happen without running
   git-bisect-tool --good abc123 --test ./test.sh --dry-run
 
@@ -48,16 +41,18 @@ Exit Codes:
         version=f"%(prog)s {__version__}"
     )
 
-    # Required arguments (unless generating template)
+    # Required arguments
     parser.add_argument(
         "--good", "-g",
         metavar="COMMIT",
-        help="Known good commit (required unless --generate-template)"
+        required=True,
+        help="Known good commit"
     )
     parser.add_argument(
         "--test", "-t",
         metavar="SCRIPT",
-        help="Path to test script (required unless --generate-template)"
+        required=True,
+        help="Path to test script"
     )
 
     # Optional arguments
@@ -104,24 +99,6 @@ Exit Codes:
         help="Enable verbose output"
     )
 
-    # Template generation
-    parser.add_argument(
-        "--generate-template",
-        metavar="PATH",
-        help="Generate a test script template at the specified path"
-    )
-    parser.add_argument(
-        "--template-type",
-        choices=list_templates(),
-        default="generic",
-        help="Type of template to generate (default: generic)"
-    )
-    parser.add_argument(
-        "--list-templates",
-        action="store_true",
-        help="List available template types"
-    )
-
     return parser
 
 
@@ -136,27 +113,6 @@ def main(argv=None) -> int:
     """
     parser = create_parser()
     args = parser.parse_args(argv)
-
-    # Handle list templates
-    if args.list_templates:
-        print("Available templates:")
-        for name in list_templates():
-            print(f"  - {name}")
-        return 0
-
-    # Handle template generation
-    if args.generate_template:
-        generate_template(args.generate_template, args.template_type)
-        print(f"Test script template generated: {args.generate_template}")
-        print(f"Template type: {args.template_type}")
-        print("Edit this file to add your build and test commands.")
-        return 0
-
-    # Validate required arguments
-    if not args.good:
-        parser.error("--good is required (unless using --generate-template)")
-    if not args.test:
-        parser.error("--test is required (unless using --generate-template)")
 
     # Run bisect
     runner = BisectRunner(
@@ -177,4 +133,3 @@ def main(argv=None) -> int:
 
 if __name__ == "__main__":
     sys.exit(main())
-
