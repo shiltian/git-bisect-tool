@@ -11,6 +11,9 @@ A Python wrapper around `git bisect run` with enhanced logging and UX for findin
 # With worktree isolation and state saving
 ./git-bisect-tool --good v1.0.0 --bad HEAD --test ./test.sh --worktree --state-file state.json
 
+# Resume an interrupted bisect
+./git-bisect-tool --resume-from state.json
+
 # Dry run
 ./git-bisect-tool --good abc123 --test ./test.sh --dry-run
 ```

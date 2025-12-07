@@ -171,6 +171,14 @@ class Git:
         """Start a git bisect session."""
         self.run("bisect", "start", bad, good, cwd=cwd)
 
+    def bisect_good(self, commit: str, cwd: Optional[str] = None):
+        """Mark a commit as good in bisect."""
+        self.run("bisect", "good", commit, cwd=cwd)
+
+    def bisect_bad(self, commit: str, cwd: Optional[str] = None):
+        """Mark a commit as bad in bisect."""
+        self.run("bisect", "bad", commit, cwd=cwd)
+
     def bisect_reset(self, cwd: Optional[str] = None):
         """Reset a git bisect session."""
         self.run("bisect", "reset", cwd=cwd, check=False)

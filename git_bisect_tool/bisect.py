@@ -40,6 +40,7 @@ class BisectRunner:
         show_ancestry: bool = False,
         dry_run: bool = False,
         verbose: bool = False,
+        resume_state: Optional[BisectState] = None,
     ):
         """Initialize the bisect runner.
 
@@ -54,9 +55,11 @@ class BisectRunner:
             show_ancestry: Whether to show merge ancestry of found commit.
             dry_run: If True, show config without running.
             verbose: If True, enable verbose logging.
+            resume_state: Optional state to resume from.
         """
         self.logger = setup_logging(verbose)
         self.verbose = verbose
+        self.resuming = resume_state is not None
 
         self.repo_path = os.path.abspath(repo_path)
         self.git = Git(self.repo_path, self.logger)
@@ -67,9 +70,13 @@ class BisectRunner:
         else:
             self.branch = self.git.get_current_branch()
 
-        # Resolve commits
-        self.good_commit = self.git.get_commit_hash(good_commit)
-        self.bad_commit = self.git.get_commit_hash(bad_commit)
+        # Resolve commits - when resuming, these are already full hashes
+        if self.resuming:
+            self.good_commit = good_commit
+            self.bad_commit = bad_commit
+        else:
+            self.good_commit = self.git.get_commit_hash(good_commit)
+            self.bad_commit = self.git.get_commit_hash(bad_commit)
 
         self.test_script = os.path.abspath(test_script)
         self.use_worktree = use_worktree
@@ -80,15 +87,19 @@ class BisectRunner:
         self.worktree_path: Optional[str] = None
         self.temp_dir: Optional[str] = None
 
-        # Initialize state
-        self.state = BisectState(
-            repo_path=self.repo_path,
-            branch=self.branch,
-            good_commit=self.good_commit,
-            bad_commit=self.bad_commit,
-            test_script=self.test_script,
-            started_at=datetime.now().isoformat(),
-        )
+        # Use resume state or create new state
+        if resume_state:
+            self.state = resume_state
+            self.state.status = "in_progress"
+        else:
+            self.state = BisectState(
+                repo_path=self.repo_path,
+                branch=self.branch,
+                good_commit=self.good_commit,
+                bad_commit=self.bad_commit,
+                test_script=self.test_script,
+                started_at=datetime.now().isoformat(),
+            )
 
     def print_banner(self):
         """Print a nice banner."""
@@ -100,6 +111,11 @@ class BisectRunner:
         """Print the configuration."""
         good_info = self.git.get_commit_info(self.good_commit)
         bad_info = self.git.get_commit_info(self.bad_commit)
+
+        if self.resuming:
+            print(f"{Colors.BOLD}{Colors.YELLOW}Resuming interrupted bisect...{Colors.RESET}")
+            print(f"  Previous steps: {Colors.CYAN}{len(self.state.steps)}{Colors.RESET}")
+            print()
 
         print(f"{Colors.BOLD}Configuration:{Colors.RESET}")
         print(f"  Repository:   {Colors.WHITE}{self.repo_path}{Colors.RESET}")
@@ -273,6 +289,37 @@ class BisectRunner:
 
         return exit_code
 
+    def replay_bisect_trace(self, work_dir: str):
+        """Replay recorded bisect steps to restore git's bisect state.
+
+        Args:
+            work_dir: Working directory for the bisect.
+        """
+        if not self.state.steps:
+            return
+
+        self.logger.info(f"Replaying {len(self.state.steps)} previous steps...")
+
+        for step in self.state.steps:
+            # Handle both BisectStep objects and dicts
+            if isinstance(step, BisectStep):
+                commit = step.commit
+                result = step.result
+            else:
+                commit = step['commit']
+                result = step['result']
+
+            # Only replay good/bad results, skip errors
+            if result == "good":
+                self.logger.debug(f"  Replaying: {commit[:12]} -> good")
+                self.git.bisect_good(commit, cwd=work_dir)
+            elif result == "bad":
+                self.logger.debug(f"  Replaying: {commit[:12]} -> bad")
+                self.git.bisect_bad(commit, cwd=work_dir)
+            # Skip 'skip' and 'error' results - they don't help narrow down
+
+        self.logger.info("Replay complete, continuing bisect...")
+
     def run_bisect(self) -> Optional[str]:
         """Run the bisect process.
 
@@ -288,6 +335,10 @@ class BisectRunner:
             # Start bisect
             self.logger.info("Starting git bisect...")
             self.git.bisect_start(self.bad_commit, self.good_commit, cwd=work_dir)
+
+            # Replay previous steps if resuming
+            if self.resuming:
+                self.replay_bisect_trace(work_dir)
 
             # Run bisect
             self.logger.info("Running bisect with test script...")
@@ -468,4 +519,3 @@ exec "{self.test_script}" "$COMMIT" "{work_dir}"
         finally:
             if self.use_worktree:
                 self.cleanup_worktree()
-

@@ -1,10 +1,12 @@
 """Command line interface for git bisect tool."""
 
 import argparse
+import os
 import sys
 
 from . import __version__
 from .bisect import BisectRunner
+from .state import BisectState
 
 
 def create_parser() -> argparse.ArgumentParser:
@@ -25,6 +27,9 @@ Examples:
   # With worktree isolation and state saving
   git-bisect-tool --good v1.0.0 --bad HEAD --test ./test.sh --worktree --state-file bisect.json
 
+  # Resume an interrupted bisect
+  git-bisect-tool --resume-from bisect.json
+
   # Show what would happen without running
   git-bisect-tool --good abc123 --test ./test.sh --dry-run
 
@@ -41,18 +46,23 @@ Exit Codes:
         version=f"%(prog)s {__version__}"
     )
 
-    # Required arguments
+    # Resume from state file
+    parser.add_argument(
+        "--resume-from",
+        metavar="FILE",
+        help="Resume an interrupted bisect from a state file"
+    )
+
+    # Required arguments (unless resuming)
     parser.add_argument(
         "--good", "-g",
         metavar="COMMIT",
-        required=True,
-        help="Known good commit"
+        help="Known good commit (required unless --resume-from)"
     )
     parser.add_argument(
         "--test", "-t",
         metavar="SCRIPT",
-        required=True,
-        help="Path to test script"
+        help="Path to test script (required unless --resume-from)"
     )
 
     # Optional arguments
@@ -81,7 +91,7 @@ Exit Codes:
     parser.add_argument(
         "--state-file", "-s",
         metavar="FILE",
-        help="Save/resume state from this file"
+        help="Save state to this file for crash recovery"
     )
     parser.add_argument(
         "--show-ancestry", "-a",
@@ -113,6 +123,34 @@ def main(argv=None) -> int:
     """
     parser = create_parser()
     args = parser.parse_args(argv)
+
+    # Handle resume from state file
+    if args.resume_from:
+        if not os.path.isfile(args.resume_from):
+            parser.error(f"State file not found: {args.resume_from}")
+
+        state = BisectState.load(args.resume_from)
+
+        runner = BisectRunner(
+            repo_path=state.repo_path,
+            good_commit=state.good_commit,
+            bad_commit=state.bad_commit,
+            test_script=state.test_script,
+            branch=state.branch,
+            use_worktree=state.worktree_path is not None,
+            state_file=args.resume_from,
+            show_ancestry=args.show_ancestry,
+            dry_run=args.dry_run,
+            verbose=args.verbose,
+            resume_state=state,
+        )
+        return runner.run()
+
+    # Validate required arguments for fresh start
+    if not args.good:
+        parser.error("--good is required (unless using --resume-from)")
+    if not args.test:
+        parser.error("--test is required (unless using --resume-from)")
 
     # Run bisect
     runner = BisectRunner(
