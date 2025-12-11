@@ -287,58 +287,6 @@ class TestBisectRunnerReplay(unittest.TestCase):
         mock_git.bisect_bad.assert_called_once_with('c2', cwd='/work/dir')
 
 
-class TestBisectRunnerEstimate(unittest.TestCase):
-    """Tests for step estimation."""
-
-    @patch('git_bisect_tool.bisect.Git')
-    @patch('git_bisect_tool.bisect.setup_logging')
-    def test_estimate_steps(self, mock_logging, mock_git_class):
-        """estimate_steps returns log2(n) + 1."""
-        mock_git = MagicMock()
-        mock_git.get_current_branch.return_value = 'main'
-        mock_git.get_commit_hash.return_value = 'abc'
-        mock_git.count_commits_between.return_value = 100
-        mock_git_class.return_value = mock_git
-
-        with tempfile.TemporaryDirectory() as tmpdir:
-            test_script = os.path.join(tmpdir, 'test.sh')
-            with open(test_script, 'w') as f:
-                f.write('#!/bin/bash\nexit 0')
-
-            runner = BisectRunner(
-                repo_path=tmpdir,
-                good_commit='good',
-                bad_commit='bad',
-                test_script=test_script,
-            )
-
-        # log2(100) ≈ 6.6, so 6 + 1 = 7
-        self.assertEqual(runner.estimate_steps(), 7)
-
-    @patch('git_bisect_tool.bisect.Git')
-    @patch('git_bisect_tool.bisect.setup_logging')
-    def test_estimate_steps_small(self, mock_logging, mock_git_class):
-        """estimate_steps returns at least 1."""
-        mock_git = MagicMock()
-        mock_git.get_current_branch.return_value = 'main'
-        mock_git.get_commit_hash.return_value = 'abc'
-        mock_git.count_commits_between.return_value = 1
-        mock_git_class.return_value = mock_git
-
-        with tempfile.TemporaryDirectory() as tmpdir:
-            test_script = os.path.join(tmpdir, 'test.sh')
-            with open(test_script, 'w') as f:
-                f.write('#!/bin/bash\nexit 0')
-
-            runner = BisectRunner(
-                repo_path=tmpdir,
-                good_commit='good',
-                bad_commit='bad',
-                test_script=test_script,
-            )
-
-        self.assertEqual(runner.estimate_steps(), 1)
-
 
 if __name__ == '__main__':
     unittest.main()

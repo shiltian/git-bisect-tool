@@ -1,7 +1,6 @@
 """Main bisect orchestration class."""
 
 import logging
-import math
 import os
 import re
 import shutil
@@ -128,26 +127,15 @@ class BisectRunner:
             print(f"  State file:   {Colors.WHITE}{self.state_file}{Colors.RESET}")
         print(flush=True)
 
-    def estimate_steps(self) -> int:
-        """Estimate the number of bisect steps needed.
-
-        Returns:
-            Estimated number of steps (log2 of commit count).
-        """
-        commit_count = self.git.count_commits_between(self.good_commit, self.bad_commit)
-        if commit_count <= 0:
-            return 0
-        # Binary search: log2(n) steps
-        return max(1, int(math.log2(commit_count)) + 1)
-
     def print_estimate(self):
-        """Print the estimated number of steps."""
-        commit_count = self.git.count_commits_between(self.good_commit, self.bad_commit)
-        steps = self.estimate_steps()
+        """Print git bisect's own estimated number of steps."""
+        steps = self.git.bisect_estimate(self.bad_commit, self.good_commit)
 
         print(f"{Colors.BOLD}Bisect Estimate:{Colors.RESET}")
-        print(f"  Commits in range: {Colors.CYAN}{commit_count}{Colors.RESET}")
-        print(f"  Estimated steps:  {Colors.CYAN}~{steps}{Colors.RESET}")
+        if steps is not None:
+            print(f"  From git bisect: {Colors.CYAN}~{steps}{Colors.RESET}")
+        else:
+            print(f"  From git bisect: {Colors.CYAN}unknown{Colors.RESET}")
         print(flush=True)
 
     def validate(self) -> bool:

@@ -183,6 +183,18 @@ class Git:
         """Reset a git bisect session."""
         self.run("bisect", "reset", cwd=cwd, check=False)
 
+    def bisect_estimate(self, bad: str, good: str) -> Optional[int]:
+        """Return git bisect's step estimate without moving HEAD."""
+        start = self.run(
+            "bisect", "start", "--no-checkout", bad, good,
+            capture_output=True, check=False
+        )
+        try:
+            match = re.search(r"roughly (\d+) steps", start.stdout or "")
+            return int(match.group(1)) if match else None
+        finally:
+            self.run("bisect", "reset", check=False)
+
     def get_current_bisect_commit(self, cwd: Optional[str] = None) -> Optional[str]:
         """Get the current commit being tested in bisect."""
         result = self.run("rev-parse", "HEAD", cwd=cwd)
