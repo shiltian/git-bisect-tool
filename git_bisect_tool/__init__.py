@@ -7,4 +7,3 @@ commits that were merged from other branches.
 
 __version__ = "0.1.0"
 __author__ = "Shilei Tian"
-

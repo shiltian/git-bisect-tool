@@ -1,12 +1,11 @@
 """Command line interface for git bisect tool."""
 
 import argparse
-import os
 import sys
 
 from . import __version__
 from .bisect import BisectRunner
-from .state import BisectState
+from .colors import Colors
 
 
 def create_parser() -> argparse.ArgumentParser:
@@ -17,18 +16,17 @@ def create_parser() -> argparse.ArgumentParser:
     """
     parser = argparse.ArgumentParser(
         prog="git-bisect-tool",
-        description="Git Bisect Tool - Find faulty commits with enhanced logging and UX",
+        description=(
+            "Git Bisect Tool - Find faulty commits with enhanced logging and UX"
+        ),
         formatter_class=argparse.RawDescriptionHelpFormatter,
         epilog="""
 Examples:
   # Basic usage
   git-bisect-tool --good abc123 --test ./test.sh
 
-  # With worktree isolation and state saving
-  git-bisect-tool --good v1.0.0 --bad HEAD --test ./test.sh --worktree --state-file bisect.json
-
-  # Resume an interrupted bisect
-  git-bisect-tool --resume-from bisect.json
+  # With worktree isolation
+  git-bisect-tool --good v1.0.0 --bad HEAD --test ./test.sh --worktree
 
   # Show what would happen without running
   git-bisect-tool --good abc123 --test ./test.sh --dry-run
@@ -37,76 +35,72 @@ Exit Codes:
   0 - Bad commit found successfully
   1 - Bisect failed or inconclusive
   2 - Invalid arguments
-        """
+        """,
     )
 
     parser.add_argument(
-        "--version",
-        action="version",
-        version=f"%(prog)s {__version__}"
+        "--version", action="version", version=f"%(prog)s {__version__}"
     )
 
-    # Resume from state file
+    # Required arguments
     parser.add_argument(
-        "--resume-from",
-        metavar="FILE",
-        help="Resume an interrupted bisect from a state file"
-    )
-
-    # Required arguments (unless resuming)
-    parser.add_argument(
-        "--good", "-g",
+        "--good",
+        "-g",
         metavar="COMMIT",
-        help="Known good commit (required unless --resume-from)"
+        required=True,
+        help="Known good commit",
     )
     parser.add_argument(
-        "--test", "-t",
+        "--test",
+        "-t",
         metavar="SCRIPT",
-        help="Path to test script (required unless --resume-from)"
+        required=True,
+        help="Path to test script",
     )
 
     # Optional arguments
     parser.add_argument(
-        "--repo", "-r",
+        "--repo",
+        "-r",
         metavar="PATH",
         default=".",
-        help="Path to git repository (default: current directory)"
+        help="Path to git repository (default: current directory)",
     )
     parser.add_argument(
-        "--branch", "-b",
+        "--branch",
+        "-b",
         metavar="BRANCH",
-        help="Branch to bisect (default: current branch)"
+        help="Branch to bisect (default: current branch)",
     )
     parser.add_argument(
         "--bad",
         metavar="COMMIT",
         default="HEAD",
-        help="Known bad commit (default: HEAD)"
+        help="Known bad commit (default: HEAD)",
     )
     parser.add_argument(
-        "--worktree", "-w",
+        "--worktree",
+        "-w",
         action="store_true",
-        help="Use a temporary worktree for isolation"
+        help="Use a temporary worktree for isolation",
     )
     parser.add_argument(
-        "--state-file", "-s",
-        metavar="FILE",
-        help="Save state to this file for crash recovery"
-    )
-    parser.add_argument(
-        "--show-ancestry", "-a",
+        "--show-ancestry",
+        "-a",
         action="store_true",
-        help="Show merge ancestry of the found commit"
+        help="Show merge ancestry of the found commit",
     )
     parser.add_argument(
-        "--dry-run", "-n",
+        "--dry-run",
+        "-n",
         action="store_true",
-        help="Show configuration and estimates without running"
+        help="Show configuration and estimates without running",
     )
     parser.add_argument(
-        "--verbose", "-v",
+        "--verbose",
+        "-v",
         action="store_true",
-        help="Enable verbose output"
+        help="Enable verbose output",
     )
 
     return parser
@@ -121,38 +115,11 @@ def main(argv=None) -> int:
     Returns:
         Exit code.
     """
+    Colors.init()
+
     parser = create_parser()
     args = parser.parse_args(argv)
 
-    # Handle resume from state file
-    if args.resume_from:
-        if not os.path.isfile(args.resume_from):
-            parser.error(f"State file not found: {args.resume_from}")
-
-        state = BisectState.load(args.resume_from)
-
-        runner = BisectRunner(
-            repo_path=state.repo_path,
-            good_commit=state.good_commit,
-            bad_commit=state.bad_commit,
-            test_script=state.test_script,
-            branch=state.branch,
-            use_worktree=state.worktree_path is not None,
-            state_file=args.resume_from,
-            show_ancestry=args.show_ancestry,
-            dry_run=args.dry_run,
-            verbose=args.verbose,
-            resume_state=state,
-        )
-        return runner.run()
-
-    # Validate required arguments for fresh start
-    if not args.good:
-        parser.error("--good is required (unless using --resume-from)")
-    if not args.test:
-        parser.error("--test is required (unless using --resume-from)")
-
-    # Run bisect
     runner = BisectRunner(
         repo_path=args.repo,
         good_commit=args.good,
@@ -160,7 +127,6 @@ def main(argv=None) -> int:
         test_script=args.test,
         branch=args.branch,
         use_worktree=args.worktree,
-        state_file=args.state_file,
         show_ancestry=args.show_ancestry,
         dry_run=args.dry_run,
         verbose=args.verbose,

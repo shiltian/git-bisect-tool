@@ -4,7 +4,29 @@ import sys
 
 
 class Colors:
-    """ANSI color codes for terminal output."""
+    """ANSI color codes for terminal output.
+
+    Call ``Colors.init()`` once at startup to auto-detect TTY capability.
+    Colors are enabled by default; ``init()`` disables them when stdout
+    is not a terminal.
+    """
+
+    _COLOR_ATTRS = (
+        "RESET",
+        "BOLD",
+        "DIM",
+        "RED",
+        "GREEN",
+        "YELLOW",
+        "BLUE",
+        "MAGENTA",
+        "CYAN",
+        "WHITE",
+        "BG_RED",
+        "BG_GREEN",
+        "BG_YELLOW",
+        "BG_BLUE",
+    )
 
     RESET = "\033[0m"
     BOLD = "\033[1m"
@@ -25,18 +47,16 @@ class Colors:
 
     @classmethod
     def disable(cls):
-        """Disable colors (for non-TTY output)."""
-        for attr in dir(cls):
-            if not attr.startswith('_') and attr.isupper():
-                setattr(cls, attr, "")
+        """Disable colors (set all codes to empty strings)."""
+        for attr in cls._COLOR_ATTRS:
+            setattr(cls, attr, "")
 
     @classmethod
     def init(cls):
-        """Initialize colors based on terminal capabilities."""
+        """Initialize colors based on terminal capabilities.
+
+        Disables colors when stdout is not a TTY.  Call this once from
+        the CLI entry point rather than at import time.
+        """
         if not sys.stdout.isatty():
             cls.disable()
-
-
-# Auto-initialize on import
-Colors.init()
-

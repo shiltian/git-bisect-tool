@@ -1,0 +1,25 @@
+[build-system]
+requires = ["setuptools>=68.0", "setuptools-scm"]
+build-backend = "setuptools.build_meta"
+
+[project]
+name = "git-bisect-tool"
+version = "0.1.0"
+description = "A Python wrapper around git bisect run with enhanced logging and UX"
+readme = "README.md"
+license = "MIT"
+requires-python = ">=3.10"
+authors = [{ name = "Shilei Tian" }]
+
+[project.scripts]
+git-bisect-tool = "git_bisect_tool.cli:main"
+
+[tool.black]
+line-length = 88
+target-version = ["py310"]
+
+[tool.pytest.ini_options]
+testpaths = ["tests"]
+
+[tool.setuptools.packages.find]
+include = ["git_bisect_tool*"]

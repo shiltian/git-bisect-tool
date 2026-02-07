@@ -1,5 +1,6 @@
 """Logging configuration for the git bisect tool."""
 
+import copy
 import logging
 import sys
 
@@ -7,7 +8,11 @@ from .colors import Colors
 
 
 class ColoredFormatter(logging.Formatter):
-    """Custom formatter with colors based on log level."""
+    """Custom formatter with colors based on log level.
+
+    Creates a shallow copy of each log record before modifying it so
+    that other handlers attached to the same logger are not affected.
+    """
 
     LEVEL_COLORS = {
         logging.DEBUG: Colors.DIM,
@@ -17,11 +22,10 @@ class ColoredFormatter(logging.Formatter):
         logging.CRITICAL: Colors.BG_RED + Colors.WHITE,
     }
 
-    def format(self, record):
+    def format(self, record: logging.LogRecord) -> str:
+        record = copy.copy(record)
         color = self.LEVEL_COLORS.get(record.levelno, Colors.RESET)
-        # Color the level name if it's in the format
         record.levelname = f"{color}{record.levelname}{Colors.RESET}"
-        # Color the message based on level
         if record.levelno >= logging.WARNING:
             record.msg = f"{color}{record.msg}{Colors.RESET}"
         return super().format(record)
@@ -42,19 +46,15 @@ def setup_logging(verbose: bool = False) -> logging.Logger:
     # Remove existing handlers to avoid duplicates
     logger.handlers.clear()
 
-    logger.setLevel(logging.DEBUG if verbose else logging.INFO)
+    level = logging.DEBUG if verbose else logging.INFO
+    logger.setLevel(level)
 
     # Use stdout instead of stderr for consistent output ordering with print()
     handler = logging.StreamHandler(sys.stdout)
-    handler.setLevel(logging.DEBUG if verbose else logging.INFO)
+    handler.setLevel(level)
 
-    # Only show level prefix in verbose mode
-    if verbose:
-        fmt = "%(levelname)s %(message)s"
-    else:
-        fmt = "%(message)s"
+    fmt = "%(levelname)s %(message)s" if verbose else "%(message)s"
     handler.setFormatter(ColoredFormatter(fmt))
 
     logger.addHandler(handler)
     return logger
-

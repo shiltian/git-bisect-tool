@@ -75,9 +75,6 @@ venv.bak/
 dmypy.json
 
 # Project-specific
-# State files from bisect runs
-*.state.json
-bisect-state*.json
 
 # Test output
 *.log
@@ -88,3 +85,5 @@ test-output/
 *.temp
 .DS_Store
 
+# Claude
+CLAUDE.md

@@ -3,12 +3,32 @@
 import logging
 import re
 import subprocess
-from typing import Optional
+from typing import Optional, TypedDict
 
 
 class GitError(Exception):
     """Exception for git command failures."""
+
     pass
+
+
+class CommitInfo(TypedDict):
+    """Typed dictionary for commit information."""
+
+    hash: str
+    short_hash: str
+    subject: str
+    author_name: str
+    author_email: str
+    author_date: str
+
+
+class MergeAncestryEntry(TypedDict):
+    """Typed dictionary for merge ancestry entries."""
+
+    merge_commit: str
+    message: str
+    source_branch: Optional[str]
 
 
 class Git:
@@ -26,10 +46,10 @@ class Git:
 
     def run(
         self,
-        *args,
+        *args: str,
         capture_output: bool = True,
         check: bool = True,
-        cwd: Optional[str] = None
+        cwd: Optional[str] = None,
     ) -> subprocess.CompletedProcess:
         """Run a git command.
 
@@ -45,22 +65,19 @@ class Git:
         Raises:
             GitError: If command fails and check=True.
         """
-        cmd = ["git", "-C", cwd or self.repo_path] + list(args)
-        self.logger.debug(f"Running: {' '.join(cmd)}")
+        cmd = ["git", "-C", cwd or self.repo_path, *args]
+        self.logger.debug("Running: %s", " ".join(cmd))
 
         try:
             result = subprocess.run(
-                cmd,
-                capture_output=capture_output,
-                text=True,
-                check=check
+                cmd, capture_output=capture_output, text=True, check=check
             )
             if result.stdout:
-                self.logger.debug(f"stdout: {result.stdout.strip()}")
+                self.logger.debug("stdout: %s", result.stdout.strip())
             return result
         except subprocess.CalledProcessError as e:
-            self.logger.error(f"Git command failed: {e.stderr}")
-            raise GitError(f"Git command failed: {' '.join(cmd)}\n{e.stderr}")
+            self.logger.error("Git command failed: %s", e.stderr)
+            raise GitError(f"Git command failed: {' '.join(cmd)}\n{e.stderr}") from e
 
     def get_current_branch(self) -> str:
         """Get the current branch name."""
@@ -72,37 +89,23 @@ class Git:
         result = self.run("rev-parse", ref)
         return result.stdout.strip()
 
-    def get_short_hash(self, ref: str) -> str:
-        """Get the short commit hash for a ref."""
-        result = self.run("rev-parse", "--short", ref)
-        return result.stdout.strip()
-
-    def get_commit_message(self, ref: str) -> str:
-        """Get the commit message for a ref."""
-        result = self.run("log", "-1", "--format=%s", ref)
-        return result.stdout.strip()
-
-    def get_commit_info(self, ref: str) -> dict:
+    def get_commit_info(self, ref: str) -> CommitInfo:
         """Get detailed commit information.
 
         Returns:
-            Dictionary with keys: hash, short_hash, subject, author_name,
+            CommitInfo with hash, short_hash, subject, author_name,
             author_email, author_date.
         """
-        result = self.run(
-            "log", "-1",
-            "--format=%H%n%h%n%s%n%an%n%ae%n%ai",
-            ref
+        result = self.run("log", "-1", "--format=%H%n%h%n%s%n%an%n%ae%n%ai", ref)
+        lines = result.stdout.strip().split("\n")
+        return CommitInfo(
+            hash=lines[0],
+            short_hash=lines[1],
+            subject=lines[2],
+            author_name=lines[3],
+            author_email=lines[4],
+            author_date=lines[5],
         )
-        lines = result.stdout.strip().split('\n')
-        return {
-            'hash': lines[0],
-            'short_hash': lines[1],
-            'subject': lines[2],
-            'author_name': lines[3],
-            'author_email': lines[4],
-            'author_date': lines[5],
-        }
 
     def count_commits_between(self, good: str, bad: str) -> int:
         """Count the number of commits between good and bad."""
@@ -112,45 +115,49 @@ class Git:
     def is_ancestor(self, ancestor: str, descendant: str) -> bool:
         """Check if one commit is an ancestor of another."""
         result = self.run(
-            "merge-base", "--is-ancestor", ancestor, descendant,
-            check=False
+            "merge-base", "--is-ancestor", ancestor, descendant, check=False
         )
         return result.returncode == 0
 
-    def get_merge_ancestry(self, commit: str, target_branch: str) -> list:
+    def get_merge_ancestry(
+        self, commit: str, target_branch: str
+    ) -> list[MergeAncestryEntry]:
         """Get the merge ancestry path of a commit.
 
-        Returns a list of dictionaries showing how the commit was merged
-        into the target branch. Each dict has: merge_commit, message, source_branch.
+        Returns a list showing how the commit was merged into the target branch.
         """
-        ancestry = []
+        ancestry: list[MergeAncestryEntry] = []
 
-        # Get all merge commits that contain this commit
         result = self.run(
-            "log", "--ancestry-path", "--merges",
+            "log",
+            "--ancestry-path",
+            "--merges",
             "--format=%H %s",
-            f"{commit}..{target_branch}"
+            f"{commit}..{target_branch}",
         )
 
         if result.stdout.strip():
-            for line in result.stdout.strip().split('\n'):
-                if line:
-                    parts = line.split(' ', 1)
-                    merge_hash = parts[0]
-                    merge_subject = parts[1] if len(parts) > 1 else ""
+            for line in result.stdout.strip().split("\n"):
+                if not line:
+                    continue
+                parts = line.split(" ", 1)
+                merge_hash = parts[0]
+                merge_subject = parts[1] if len(parts) > 1 else ""
 
-                    # Try to extract branch name from merge commit message
-                    branch_match = re.search(
-                        r"Merge (?:branch |pull request .* from )['\"']?([^'\"'\s]+)",
-                        merge_subject
+                # Try to extract branch name from merge commit message
+                branch_match = re.search(
+                    r"Merge (?:branch |pull request .* from )['\"]?([^'\"\s]+)",
+                    merge_subject,
+                )
+                branch_name = branch_match.group(1) if branch_match else None
+
+                ancestry.append(
+                    MergeAncestryEntry(
+                        merge_commit=merge_hash[:12],
+                        message=merge_subject,
+                        source_branch=branch_name,
                     )
-                    branch_name = branch_match.group(1) if branch_match else None
-
-                    ancestry.append({
-                        'merge_commit': merge_hash[:12],
-                        'message': merge_subject,
-                        'source_branch': branch_name
-                    })
+                )
 
         return ancestry
 
@@ -163,21 +170,9 @@ class Git:
         """Remove a git worktree."""
         self.run("worktree", "remove", "--force", path, check=False)
 
-    def checkout(self, ref: str, cwd: Optional[str] = None):
-        """Checkout a specific ref."""
-        self.run("checkout", ref, cwd=cwd)
-
     def bisect_start(self, bad: str, good: str, cwd: Optional[str] = None):
         """Start a git bisect session."""
         self.run("bisect", "start", bad, good, cwd=cwd)
-
-    def bisect_good(self, commit: str, cwd: Optional[str] = None):
-        """Mark a commit as good in bisect."""
-        self.run("bisect", "good", commit, cwd=cwd)
-
-    def bisect_bad(self, commit: str, cwd: Optional[str] = None):
-        """Mark a commit as bad in bisect."""
-        self.run("bisect", "bad", commit, cwd=cwd)
 
     def bisect_reset(self, cwd: Optional[str] = None):
         """Reset a git bisect session."""
@@ -186,17 +181,17 @@ class Git:
     def bisect_estimate(self, bad: str, good: str) -> Optional[int]:
         """Return git bisect's step estimate without moving HEAD."""
         start = self.run(
-            "bisect", "start", "--no-checkout", bad, good,
-            capture_output=True, check=False
+            "bisect",
+            "start",
+            "--no-checkout",
+            bad,
+            good,
+            capture_output=True,
+            check=False,
         )
         try:
-            match = re.search(r"roughly (\d+) steps", start.stdout or "")
+            output = (start.stdout or "") + (start.stderr or "")
+            match = re.search(r"roughly (\d+) steps?", output)
             return int(match.group(1)) if match else None
         finally:
             self.run("bisect", "reset", check=False)
-
-    def get_current_bisect_commit(self, cwd: Optional[str] = None) -> Optional[str]:
-        """Get the current commit being tested in bisect."""
-        result = self.run("rev-parse", "HEAD", cwd=cwd)
-        return result.stdout.strip()
-
